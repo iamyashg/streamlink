@@ -1,8 +1,9 @@
+from __future__ import annotations
+
 import unittest
 from binascii import hexlify
 from functools import partial
 from threading import Event, Thread
-from typing import List
 from unittest.mock import patch
 
 import requests_mock
@@ -53,7 +54,7 @@ class Tag(HLSItemBase):
 
     @classmethod
     def val_quoted_string(cls, value):
-        return "\"{0}\"".format(value)
+        return '"{0}"'.format(value)
 
     @classmethod
     def val_hex(cls, value):
@@ -138,13 +139,14 @@ class HLSStreamReadThread(Thread):
     """
     Run the reader on a separate thread, so that each read can be controlled from within the main thread
     """
+
     def __init__(self, session: Streamlink, stream: HLSStream, *args, **kwargs):
         super().__init__(*args, **kwargs, daemon=True)
 
         self.read_once = Event()
         self.handshake = Handshake()
         self.read_all = False
-        self.data: List[bytes] = []
+        self.data: list[bytes] = []
 
         self.session = session
         self.stream = stream
@@ -201,7 +203,7 @@ class TestMixinStreamHLS(unittest.TestCase):
         super().__init__(*args, **kwargs)
         # FIXME: fix HTTPSession.request()
         # don't sleep on mocked HTTP request failures
-        self._patch_http_retry_sleep = patch("streamlink.plugin.api.http_session.time.sleep")
+        self._patch_http_retry_sleep = patch("streamlink.session.http.time.sleep")
         self.mocker = requests_mock.Mocker()
         self.mocks = {}
 
@@ -280,7 +282,7 @@ class TestMixinStreamHLS(unittest.TestCase):
         return data
 
     def get_session(self, options=None, *args, **kwargs):
-        return Streamlink(options)
+        return Streamlink(options, plugins_builtin=False)
 
     # set up HLS responses, create the session and read thread and start it
     def subject(self, playlists, options=None, streamoptions=None, threadoptions=None, start=True, *args, **kwargs):
