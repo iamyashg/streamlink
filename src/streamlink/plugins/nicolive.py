@@ -19,7 +19,6 @@ from streamlink.plugin.api import useragents, validate
 from streamlink.plugin.api.websocket import WebsocketClient
 from streamlink.stream.hls import HLSStream, HLSStreamReader
 from streamlink.utils.parse import parse_json
-from streamlink.utils.times import hours_minutes_seconds
 from streamlink.utils.url import update_qsd
 
 
@@ -117,9 +116,9 @@ class NicoLiveHLSStream(HLSStream):
         self.wsclient = wsclient
 
 
-@pluginmatcher(re.compile(
-    r"https?://(?P<domain>live\d*\.nicovideo\.jp)/watch/(lv|co)\d+",
-))
+@pluginmatcher(
+    re.compile(r"https?://(?P<domain>live\d*\.nicovideo\.jp)/watch/(lv|co|user/)\d+"),
+)
 @pluginargument(
     "email",
     sensitive=True,
@@ -153,7 +152,7 @@ class NicoLiveHLSStream(HLSStream):
 )
 @pluginargument(
     "timeshift-offset",
-    type=hours_minutes_seconds,
+    type="hours_minutes_seconds",
     argument_name="niconico-timeshift-offset",
     metavar="[[XX:]XX:]XX | [XXh][XXm][XXs]",
     help="""
@@ -166,9 +165,7 @@ class NicoLive(Plugin):
     STREAM_READY_TIMEOUT = 6
     LOGIN_URL = "https://account.nicovideo.jp/login/redirector"
     LOGIN_URL_PARAMS = {
-        "show_button_twitter": 1,
-        "show_button_facebook": 1,
-        "next_url": "/",
+        "site": "niconico",
     }
 
     wsclient: NicoLiveWsClient
@@ -221,12 +218,15 @@ class NicoLive(Plugin):
         return self.wsclient.hls_stream_url
 
     def get_data(self):
-        return self.session.http.get(self.url, schema=validate.Schema(
-            validate.parse_html(),
-            validate.xml_find(".//script[@id='embedded-data'][@data-props]"),
-            validate.get("data-props"),
-            validate.parse_json(),
-        ))
+        return self.session.http.get(
+            self.url,
+            schema=validate.Schema(
+                validate.parse_html(),
+                validate.xml_find(".//script[@id='embedded-data'][@data-props]"),
+                validate.get("data-props"),
+                validate.parse_json(),
+            ),
+        )
 
     @staticmethod
     def find_metadata(data):

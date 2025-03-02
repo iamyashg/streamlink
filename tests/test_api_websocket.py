@@ -4,22 +4,29 @@ import pytest
 from websocket import ABNF, STATUS_NORMAL  # type: ignore[import]
 
 from streamlink.logger import DEBUG, TRACE
-from streamlink.plugin.api.useragents import FIREFOX
 from streamlink.plugin.api.websocket import WebsocketClient
 from streamlink.session import Streamlink
+from streamlink.session.http_useragents import FIREFOX
 from tests.testutils.handshake import Handshake
 
 
-@pytest.mark.parametrize(("name", "value"), [
-    ("OPCODE_CONT", ABNF.OPCODE_CONT),
-    ("OPCODE_TEXT", ABNF.OPCODE_TEXT),
-    ("OPCODE_BINARY", ABNF.OPCODE_BINARY),
-    ("OPCODE_CLOSE", ABNF.OPCODE_CLOSE),
-    ("OPCODE_PING", ABNF.OPCODE_PING),
-    ("OPCODE_PONG", ABNF.OPCODE_PONG),
-])
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("OPCODE_CONT", ABNF.OPCODE_CONT),
+        ("OPCODE_TEXT", ABNF.OPCODE_TEXT),
+        ("OPCODE_BINARY", ABNF.OPCODE_BINARY),
+        ("OPCODE_CLOSE", ABNF.OPCODE_CLOSE),
+        ("OPCODE_PING", ABNF.OPCODE_PING),
+        ("OPCODE_PONG", ABNF.OPCODE_PONG),
+    ],
+)
 def test_opcode_export(name, value):
     assert getattr(WebsocketClient, name) == value
+
+
+class FakeWebsocketClient(WebsocketClient):
+    ws: Mock
 
 
 class TestWebsocketClient:
@@ -33,44 +40,63 @@ class TestWebsocketClient:
         with patch("streamlink.plugin.api.websocket.certify_where", side_effect=Mock(return_value="/path/to/cacert.pem")):
             yield WebsocketClient(session, "wss://localhost:0", **getattr(request, "param", {}))
 
-    @pytest.mark.parametrize(("level", "expected"), [
-        pytest.param(DEBUG, False, id="debug"),
-        pytest.param(TRACE, True, id="trace"),
-    ])
-    def test_log(self, session: Streamlink, level: int, expected: bool):
-        with patch("streamlink.plugin.api.websocket.enableTrace") as mock_enable_trace, \
-             patch("streamlink.plugin.api.websocket.rootlogger", Mock(level=level)):
-            WebsocketClient(session, "wss://localhost:0")
-        assert mock_enable_trace.called is expected
+    @pytest.mark.parametrize(
+        ("level", "expected"),
+        [
+            pytest.param(DEBUG, [], id="debug"),
+            pytest.param(TRACE, [call(True, handler=ANY)], id="trace"),
+        ],
+    )
+    def test_log(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        session: Streamlink,
+        level: int,
+        expected: bool,
+    ):
+        caplog.set_level(level, "streamlink")
+        mock_enable_trace = Mock()
+        monkeypatch.setattr("streamlink.plugin.api.websocket.enableTrace", mock_enable_trace)
+        WebsocketClient(session, "wss://localhost:0")
+        assert mock_enable_trace.call_args_list == expected
 
-    @pytest.mark.parametrize(("client", "expected"), [
-        pytest.param({}, FIREFOX, id="default"),
-        pytest.param({"header": ["User-Agent: foo"]}, "foo", id="header list"),
-        pytest.param({"header": {"User-Agent": "bar"}}, "bar", id="header dict"),
-    ], indirect=["client"])
-    def test_user_agent(self, client: WebsocketClient, websocketapp: Mock, expected: str):
+    @pytest.mark.parametrize(
+        ("client", "expected"),
+        [
+            pytest.param({}, FIREFOX, id="default"),
+            pytest.param({"header": ["User-Agent: foo"]}, "foo", id="header list"),
+            pytest.param({"header": {"User-Agent": "bar"}}, "bar", id="header dict"),
+        ],
+        indirect=["client"],
+    )
+    def test_user_agent(self, client: FakeWebsocketClient, websocketapp: Mock, expected: str):
         assert [arg[1].get("header", []) for arg in websocketapp.call_args_list] == [[f"User-Agent: {expected}"]]
 
-    @pytest.mark.parametrize(("session", "client"), [
-        (
-            {
-                "http-proxy": "https://username:password@hostname:1234",
-            },
-            {
-                "subprotocols": ["sub1", "sub2"],
-                "cookie": "cookie",
-                "sockopt": ("sockopt1", "sockopt2"),
-                "sslopt": {"ssloptkey": "ssloptval"},
-                "host": "customhost",
-                "origin": "customorigin",
-                "suppress_origin": True,
-                "ping_interval": 30,
-                "ping_timeout": 4,
-                "ping_payload": "ping",
-            },
-        ),
-    ], indirect=["session", "client"])
-    def test_args_and_proxy(self, session: Streamlink, client: WebsocketClient, websocketapp: Mock):
+    @pytest.mark.parametrize(
+        ("session", "client"),
+        [
+            (
+                {
+                    "http-proxy": "https://username:password@hostname:1234",
+                },
+                {
+                    "subprotocols": ["sub1", "sub2"],
+                    "cookie": "cookie",
+                    "sockopt": ("sockopt1", "sockopt2"),
+                    "sslopt": {"ssloptkey": "ssloptval"},
+                    "host": "customhost",
+                    "origin": "customorigin",
+                    "suppress_origin": True,
+                    "ping_interval": 30,
+                    "ping_timeout": 4,
+                    "ping_payload": "ping",
+                },
+            ),
+        ],
+        indirect=["session", "client"],
+    )
+    def test_args_and_proxy(self, session: Streamlink, client: FakeWebsocketClient, websocketapp: Mock):
         assert websocketapp.call_args_list == [
             call(
                 url="wss://localhost:0",
@@ -122,7 +148,7 @@ class TestWebsocketClient:
         assert client.ws.on_cont_message == client.on_cont_message
         assert client.ws.on_data == client.on_data
 
-    def test_send(self, client: WebsocketClient):
+    def test_send(self, client: FakeWebsocketClient):
         with patch.object(client, "ws") as mock_ws:
             client.send("foo")
             client.send(b"foo", ABNF.OPCODE_BINARY)
@@ -130,13 +156,13 @@ class TestWebsocketClient:
         assert mock_ws.send.call_args_list == [
             call("foo", ABNF.OPCODE_TEXT),
             call(b"foo", ABNF.OPCODE_BINARY),
-            call("{\"foo\":\"bar\",\"baz\":\"qux\"}", ABNF.OPCODE_TEXT),
+            call('{"foo":"bar","baz":"qux"}', ABNF.OPCODE_TEXT),
         ]
 
     def test_close(self, session: Streamlink):
         handshake = Handshake()
 
-        class WebsocketClientSubclass(WebsocketClient):
+        class WebsocketClientSubclass(FakeWebsocketClient):
             def run(self):
                 with handshake():
                     pass
@@ -153,7 +179,7 @@ class TestWebsocketClient:
     def test_close_self(self, session: Streamlink):
         handshake = Handshake()
 
-        class WebsocketClientSubclass(WebsocketClient):
+        class WebsocketClientSubclass(FakeWebsocketClient):
             def run(self):
                 with handshake(Exception):
                     self.close(reason=b"bar")
@@ -165,7 +191,7 @@ class TestWebsocketClient:
         assert not client.is_alive()
         assert handshake._context.error is None, "Doesn't join current thread"
 
-    def test_reconnect_disconnected(self, client: WebsocketClient, websocketapp: Mock):
+    def test_reconnect_disconnected(self, client: FakeWebsocketClient, websocketapp: Mock):
         handshake = Handshake()
 
         # noinspection PyUnusedLocal
@@ -185,7 +211,7 @@ class TestWebsocketClient:
         client.join(timeout=4)
         assert not client.is_alive()
 
-    def test_reconnect_once(self, client: WebsocketClient, websocketapp: Mock):
+    def test_reconnect_once(self, client: FakeWebsocketClient, websocketapp: Mock):
         handshake = Handshake()
 
         # noinspection PyUnusedLocal

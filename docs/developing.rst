@@ -38,60 +38,56 @@ While working on any kind of python-based project, it is usually best to do this
 the Python environment of the host system. This ensures that development can be done in a clean space which is free of version
 conflicts and other unrelated packages.
 
-First, make sure that you have the latest stable versions of Python and pip installed.
+First, make sure that you have the latest stable versions of Python and `pip`_ installed:
 
 .. code-block:: bash
 
     python --version
     pip --version
 
-As the second preparation step, install the latest version of ``virtualenv``, either via your system's package manager or pip,
-and create a new virtual environment. These environments can be created separately for different Python versions. Please refer
-to the `virtualenv documentation`_ for all available parameters. There are also several wrappers around virtualenv available.
+Then set up a new virtual environment using `venv`_ of the Python standard library:
 
 .. code-block:: bash
 
-    pip install --upgrade --user virtualenv
-    virtualenv --version
-
     # replace ~/venvs/streamlink with your path of choice and give it a proper name
-    virtualenv --download --verbose ~/venvs/streamlink
+    python -m venv ~/venvs/streamlink
 
-Now activate the virtual environment by sourcing the activation shell script.
+Now activate the virtual environment by sourcing the activation shell script:
 
 .. code-block:: bash
 
     source ~/venvs/streamlink/bin/activate
 
-    # non-POSIX shells have their own activation script, eg. FISH
+    # non-POSIX shells have their own activation script, e.g. FISH
     source ~/venvs/streamlink/bin/activate.fish
 
-    # on Windows, activation scripts are located in the Scripts/ subdirectory instead of bin/
-    source ~/venvs/streamlink/Scripts/activate
+.. code-block:: pwsh
 
-.. _virtualenv documentation: https://virtualenv.pypa.io/en/latest/
+    # on Windows, activation scripts are located in the Scripts/ subdirectory instead of bin/
+    ~\venvs\streamlink\Scripts\Activate.ps1
+
+.. _pip: https://pip.pypa.io/en/stable/
+.. _venv: https://docs.python.org/3/library/venv.html
 
 
 Installing Streamlink
 ^^^^^^^^^^^^^^^^^^^^^
 
-After activating the new virtual environment, Streamlink's build dependencies and Streamlink itself need to be installed.
+After activating the new virtual environment, Streamlink's development dependencies and Streamlink itself need to be installed.
 Regular development dependencies and documentation related dependencies are listed in the text files shown below and need to
 be installed separately.
 
 .. code-block:: bash
 
     # install additional dependencies
-    pip install -r dev-requirements.txt
-    pip install -r docs-requirements.txt
+    pip install -U -r dev-requirements.txt
+    pip install -U -r docs-requirements.txt
 
-    # install Streamlink from source
-    # check setup.py for optional dependencies and install those manually if you need to
+    # install Streamlink in "editable" mode
     pip install -e .
 
     # validate that Streamlink is working
-    which streamlink
-    streamlink --version
+    streamlink --loglevel=debug
 
 
 Validating changes
@@ -104,82 +100,44 @@ performing these checks locally avoids unnecessary build failures.
 .. code-block:: bash
 
     # run automated tests
-    python -m pytest -ra
+    pytest
     # or just run a subset of all tests
-    python -m pytest -ra path/to/test-file.py::TestClassName::test_method_name ...
+    pytest path/to/test-file.py::TestClassName::test_method_name ...
 
     # check code for linting errors
-    ruff .
+    ruff check .
+    # check code for formatting errors
+    ruff format --diff .
     # check code for typing errors
     mypy
-    # optionally check for typing errors if changes were made to the docs extensions
-    mypy docs
 
     # build the documentation
     make --directory=docs clean html
-    $BROWSER ./docs/_build/html/index.html
+
+    # check the documentation
+    python -m http.server 8000 --bind '127.0.0.1' --directory 'docs/_build/html/'
+    "${BROWSER}" http://127.0.0.1:8000/
 
 
 Code style
 ----------
 
-Streamlink uses `Ruff`_ as primary code linting tool and the project aims to use best practices for achieving great
-code readability with minimal git diffs, as detailed in :pep:`8` and implemented in related linting tools, such as `Black`_.
+Streamlink uses `Ruff`_ as primary code `linting <Ruff-linter>`_ and `formatting <Ruff-formatter>`_ tool.
 
-These are the best practices most likely to be relevant to plugin authors:
+The project aims to use best practices for achieving great code readability with minimal git diffs,
+as detailed in :pep:`8` and implemented in related linting and formatting tools, such as `Black`_.
 
-1. `Import order according to PEP8 <pep8-imports_>`_
-
-2. `Indentation of 4 spaces per level <pep8-indentation_>`_
-
-3. `Double quotes for all string literals <black-quotes_>`_
-
-4. `Line length of at most 128 characters <pyproject.toml_>`_
-
-5. `Balanced line wrapping for readability <black-line-wrapping_>`_
-
-6. `Blank lines <pep8-blank-lines_>`_
-
-7. `Comments <pep8-comments_>`_
-
-8. `Line breaks and binary operators <pep8-binary-operators_>`_
-
-9. New indented line for each bracket item (args, lists, etc.) in multi-line definitions, with trailing comma
-
-   .. code-block:: python
-
-      # incorrect:
-      schema=validate.Schema(
-          validate.parse_json(), [{
-              "foo": {"bar": validate.url(schema="https", path=validate.endswith(".m3u8"))}, "baz": str
-          }]
-      )
-
-      # correct:
-      schema=validate.Schema(
-          validate.parse_json(),
-          [{
-              "foo": {
-                  "bar": validate.url(schema="https", path=validate.endswith(".m3u8")),
-              },
-              "baz": str,
-          }],
-      )
+For detailed linting and formatting configurations specific to Streamlink, please have a look at `pyproject.toml`_.
 
 It might be helpful to new plugin authors to pick a small and recently modified existing plugin to use as an initial
 template from which to work. If care is taken to preserve existing blank lines during modification, the main plugin
 structure should be compliant-ready for `linting <Validating changes_>`_.
 
-.. _Ruff: https://github.com/charliermarsh/ruff#readme
+.. _Ruff: https://github.com/astral-sh/ruff
+.. _Ruff-linter: https://docs.astral.sh/ruff/linter/
+.. _Ruff-formatter: https://docs.astral.sh/ruff/formatter/
 .. _Black: https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html
 .. _pyproject.toml: https://github.com/streamlink/streamlink/blob/master/pyproject.toml
-.. _pep8-binary-operators: https://peps.python.org/pep-0008/#should-a-line-break-before-or-after-a-binary-operator
-.. _pep8-blank-lines: https://peps.python.org/pep-0008/#blank-lines
-.. _pep8-comments: https://peps.python.org/pep-0008/#comments
-.. _pep8-imports: https://peps.python.org/pep-0008/#imports
-.. _pep8-indentation: https://peps.python.org/pep-0008/#indentation
-.. _black-line-wrapping: https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html#how-black-wraps-lines
-.. _black-quotes: https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html#strings
 
 
 Plugins
@@ -196,11 +154,13 @@ Adding plugins
    Each plugin class requires at least one ``pluginmatcher`` decorator which defines the URL regex, matching priority
    and an optional name.
 
-   Plugins need to implement the ``_get_streams()`` method which either returns a list of ``Stream`` instances or which yields
-   ``Stream`` instances. ``Stream`` is the base class of ``HTTPStream``, ``HLSStream`` and ``DASHStream``.
+   Plugins need to implement the :meth:`_get_streams() <streamlink.plugin.Plugin._get_streams>` method which must return
+   ``Mapping[str,Stream] | Iterable[Tuple[str,Stream]] | Iterator[Tuple[str,Stream]] | None``.
+   ``Stream`` is the base class of :class:`HTTPStream <streamlink.stream.HTTPStream>`,
+   :class:`HLSStream <streamlink.stream.HLSStream>` and :class:`DASHStream <streamlink.stream.DASHStream>`.
 
    Plugins also require metadata which will be read when building the documentation. This metadata contains information about
-   the plugin, eg. which URLs it accepts, which kind of streams it returns, whether content is region-locked, or if any kind of
+   the plugin, e.g. which URLs it accepts, which kind of streams it returns, whether content is region-locked, or if any kind of
    account or subscription is needed for watching the content, etc. This metadata needs to be set as a header comment at
    the beginning of the plugin file, in the following format (order of items is important):
 
